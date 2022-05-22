@@ -321,10 +321,55 @@ MNEMONICS = {
     "SBWP": Opcode(instr=0xFF, params=""),
 }
 
+number = re.compile(r"^(?:0x)?[0-9A-Za-z]+$")
+bin = re.compile(r"^[01]+$")
+dec = re.compile(r"^[0-9]+$")
+hex = re.compile(r"^0x[A-Za-z0-9]+$")
+string = re.compile(r'"([^"]+)"')
+alias = re.compile(r"^(\w+):\s*([^\s]+)$")
+label = re.compile(r"^(\w+):$")
+
+def byte_parity(char):
+    parity = 0
+    chr = int.from_bytes(char, byteorder='big') if type(char) is bytes else char
+
+    while chr >> 1:
+        parity = parity ^ (chr & 1)
+        chr = chr >> 1
+    parity = parity ^ (chr & 1)
+
+    return parity
+
+def byte_string(string):
+    buf = bytearray()
+    for char in string:
+        bchar = int.from_bytes(bytes(char, encoding='ascii'), byteorder='big')
+        if byte_parity(bchar):
+            buf.append((bchar | 80).to_bytes(1, byteorder='big'))
+        buf.append(bchar.to_bytes(1, byteorder='big'))
+    return buf
+
+def process_primitive(value):
+    if bin.match(value.strip()):
+        val = int(value, base=2)
+        return bytearray(val.to_bytes(val.bit_length(), byteorder='big'))
+    elif dec.match(value.strip()):
+        val = int(value)
+        return bytearray(val.to_bytes(val.bit_length(), byteorder='big'))
+    elif hex.match(value.strip()):
+        val = int(value, base=16)
+        return bytearray(val.to_bytes(val.bit_length, byteorder='big'))
+    elif string.match(value.strip()):
+        return byte_string(value.strip().strip('"'))
+    return None
+
+def is_primitive(val):
+    return number.match(val) or string.match(val)
 
 def assemble(file_name):
     line_cleaner = re.compile(r"^(.*?)(?:;.+)?$")
-    out_buf = {"_default": []}
+    out_buf = {"_default": bytearray()}
+    aliases = {}
     with open(file_name, "r") as source:
         for line in source:
             line = line_cleaner.sub(r"\1", line).strip()
@@ -343,7 +388,19 @@ def assemble(file_name):
             if isinstance(mnemonic, OpcodeGroup):
                 pass
             else:
-                pass
+                out_buf.append(mnemonic.instr)
+                for term in terms:
+                    if is_primitive(term.strip()):
+                        data = process_primitive(term.strip())
+                        if data is not None:
+                            out_buf["_default"].extend(data)
+                    elif groups := alias.match(term.strip()):
+                        data = process_primitive(groups[1][1].strip())
+                        if data is None:
+                            raise ValueError("Aliases only support primitives")
+                        aliases[groups[0][1]] = data
+                    elif label.match(term.strip()):
+                        pass
 
 
 if __name__ == "__main__":

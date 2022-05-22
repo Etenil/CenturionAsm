@@ -1,11 +1,12 @@
-PrintStr: 0x1234
+printstr = 0x1234
+crlf = 0x0D7A
 
     NOP
     NOP
     LDBL 0x50 ; toto
     BZ thing
-    SUBR PrintStr
-    "blah blah blah"
+    SUBR printstr
+    "blah blah blah" crlf
 
 
 thing:
